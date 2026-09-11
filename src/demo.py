@@ -20,7 +20,7 @@ def run(label: str, sources: dict[str, str]) -> None:
 
     print(f"\n  {label}")
     print("  " + "-" * 72)
-    print(f"  {'advisory':<16}{'package':<13}{'severity':<11}verdict")
+    print(f"  {'':<5}{'advisory':<16}{'package':<13}{'severity':<11}verdict")
     print("  " + "-" * 72)
     for v in verdicts:
         marker = {
@@ -28,7 +28,7 @@ def run(label: str, sources: dict[str, str]) -> None:
             Reachability.INDETERMINATE: " ?",
             Reachability.NOT_REACHABLE: "  ",
         }[v.reachability]
-        print(f"  {marker} {v.advisory.id:<13}{v.advisory.package:<13}"
+        print(f"  {marker} {v.advisory.id:<16}{v.advisory.package:<13}"
               f"{v.advisory.severity:<11}{v.reachability.value}")
         if v.reachability is Reachability.REACHABLE:
             print(f"       {' -> '.join(v.path)}")
