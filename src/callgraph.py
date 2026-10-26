@@ -1,9 +1,9 @@
 """Call-graph construction that is honest about what it cannot resolve.
 
-A scanner reports 340 CVEs. Most sit in code paths the application never
-executes, so engineers spend weeks upgrading libraries to fix vulnerabilities
-that were never exploitable - and the three that genuinely are get exactly the
-same priority as the rest.
+Scanners report many advisories, and most sit in code paths the application
+never executes. Engineers spend weeks upgrading libraries to fix
+vulnerabilities that were never exploitable, while the few that genuinely are
+get the same priority as the rest.
 
 Reachability analysis fixes that, and it introduces a far worse failure mode if
 done carelessly: a confident "not reachable" on something that IS reachable
