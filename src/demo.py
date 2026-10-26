@@ -1,4 +1,4 @@
-"""The 60-second artefact: 340 findings become a triage list.
+"""Demo: eight advisories become a short triage list, with and without dynamic dispatch.
 
 Run: python -m src.demo
 """
@@ -52,9 +52,8 @@ def main() -> None:
     print("  every 'not reachable' into 'indeterminate' - it does not leave")
     print("  them marked safe. That is the design rule: when the analyser")
     print("  cannot see, it says so.")
-    print("\n  Scaled to a real dependency tree, the first table is how 340")
-    print("  findings become ~11 to fix and ~24 to review, under a stated")
-    print("  and tested zero-false-negative guarantee.\n")
+    print("\n  The fixture is small on purpose: every verdict was checked by hand")
+    print("  and is asserted in tests/test_ground_truth.py (zero false negatives).\n")
 
 
 if __name__ == "__main__":

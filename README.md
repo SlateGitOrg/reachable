@@ -1,130 +1,129 @@
 # reachable
 
-> CVE triage by call-graph reachability, with a three-state verdict that never silently says 'safe'.
+Static call-graph reachability for vulnerability triage, with a three-state verdict (reachable / not-reachable / indeterminate) that never silently says "safe".
 
-`COMPACT` · **Cybersecurity** · Advanced · ~6 days · Services with large dependency trees
+[![ci](https://github.com/SlateGitOrg/reachable/actions/workflows/ci.yml/badge.svg)](https://github.com/SlateGitOrg/reachable/actions/workflows/ci.yml)
 
-**Primary language:** Python
-**Tags:** `vulnerability-management`, `static-analysis`, `call-graph`, `osv`, `sarif`, `triage`
+## Why
 
----
+A dependency scanner can report hundreds of CVEs, and most of them sit in code your application never executes. Treating them all equally burns weeks on upgrades that were never needed and buries the few that are exploitable.
 
-## The problem
+Reachability analysis fixes that by asking whether any application entry point can actually call the vulnerable function named in the advisory. Done naively in Python it is dangerous: `getattr`, dynamic imports and decorators defeat static resolution, and a confident "not reachable" on something that is reachable closes a real vulnerability as noise. `reachable` therefore has three outcomes, and anything it cannot resolve is reported as `indeterminate` instead of being dropped.
 
-A scanner reports 340 CVEs in your dependencies. Most sit in code paths your application never executes. Engineers spend weeks upgrading libraries to fix vulnerabilities that were never exploitable, and the three that genuinely are get exactly the same priority as the rest - which is how the real one gets missed.
+## Features
 
-## ⭐ The differentiator
+- Call-graph construction from Python source with the standard-library `ast` module (imports, aliased imports, decorators, nested functions and classes).
+- Breadth-first reachability from declared entry points to the advisory's vulnerable symbol, with the exact call chain for every reachable finding.
+- Three-state verdicts. Unbounded dispatch (`getattr`, `eval`, `exec`, `__import__`, `importlib`, `globals`, `locals`, `vars`, `compile`) taints the reachable set, so any "not reached" result becomes `indeterminate`.
+- Advisories that name no vulnerable symbol are always `indeterminate`, because they cannot be reachability-filtered.
+- A count of unresolved method-call receivers in the reachable set, reported with every run so the analyser's blind spots are a number, not a secret.
+- A CI gate (`fail_on` `reachable` or `actionable`) and SARIF 2.1.0 output that omits only `not-reachable` findings.
+- No runtime dependencies: Python standard library only.
 
-Performs **static call-graph reachability from application entry points to the specific vulnerable function** named in the advisory, filtering out CVEs in unreachable code. This is a different and complementary axis to exploit-probability scoring. Crucially it reports reachability **confidence honestly**, degrading to 'assume reachable' for dynamic dispatch rather than emitting a confident false negative - the failure mode that makes naive reachability analysis actively dangerous.
+## Architecture
 
-This is the sentence to lead with when someone asks you to walk through the
-project. Everything else in this repo exists to make it true and to prove it.
-
-## Data
-
-The **OSV.dev** advisory database (free, cacheable offline) including function-level affected-symbol data, plus a fixture corpus of real open-source applications with **manually verified reachability ground truth for around 60 CVEs**.
-
-> No paid API key is required to run or demo this project. Where a paid
-> service would add value it is wired as an optional enhancement behind an
-> interface with an offline mock as the default implementation.
-
-## Stack
-
-- Python
-- `ast` plus Jedi for call-graph construction
-- OSV API with an offline cache
-- Typer CLI, SARIF output
-- pytest
-
-## Core capabilities
-
-- Call-graph construction from declared entry points, conservative under dynamic dispatch
-- Advisory-to-symbol resolution, falling back to package-level when symbol data is absent
-- Three-state verdict: reachable / not-reachable / indeterminate - never a silent 'safe'
-- Reachability path output showing the exact call chain, for triage
-- SARIF output and a CI gate with a configurable policy
-
-## Repository layout
-
-```
-src/callgraph/
-src/advisories/
-src/verdict/
-fixtures/
-test/ground_truth/
+```mermaid
+flowchart LR
+    SRC["Python sources<br/>(module name to source)"] --> CG["callgraph.py<br/>ModuleAnalyser (ast)"]
+    CG --> G["Call graph<br/>functions, calls, dynamic sites"]
+    ADV["Advisories<br/>(id, package, symbol)"] --> V
+    EP["Entry points"] --> V
+    G --> V["verdict.py<br/>BFS walk and assess"]
+    V --> OUT["Verdicts:<br/>reachable / not-reachable / indeterminate"]
+    OUT --> GATE["gate()<br/>CI pass or fail"]
+    OUT --> SARIF["to_sarif()<br/>SARIF 2.1.0"]
+    COR["corpus.py<br/>fixture app and ground truth"] --> V
+    COR --> TESTS["tests/test_ground_truth.py"]
 ```
 
-## Build plan
+`callgraph.py` parses each module and records, per function, its resolved call targets, its dynamic call sites and its unresolved receivers. `verdict.py` walks the graph breadth-first from the entry points, remembering which nodes were reached through a frame that also contained a dynamic call, and then classifies each advisory. `corpus.py` holds a small fixture application with hand-verified expected verdicts that the tests assert against. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for decisions and failure modes.
 
-1. Establish the ground-truth corpus first. Sixty hand-verified CVEs is a week of unglamorous work and it is what makes the tool credible.
-2. Call graph, deliberately conservative. Every shortcut here becomes a false negative.
-3. Verdict logic with the indeterminate state - resist the temptation to collapse it to two states.
-4. SARIF + CI gate last.
+## Quick start
 
-## Testing strategy
-
-Against 60 manually-verified CVEs, assert **zero false negatives** - the tool must never mark a genuinely reachable CVE as unreachable - and report the false-positive rate honestly as a number in the README. A reachability tool optimised for a small findings list is a tool that will eventually hide a real vulnerability.
-
-Tests assert **correctness**, not merely that the code runs. A green suite on
-this repo is a claim about behaviour under adversarial conditions; treat any
-test that would pass against a deliberately broken implementation as a bug in
-the test.
-
-## Quality & safety layer
-
-The three-state verdict is the safety mechanism. Any construct the analyser cannot resolve - dynamic dispatch, reflection, dynamic import - resolves to indeterminate and is reported, never suppressed.
-
-## Measurable outcome
-
-> 340 raw findings reduce to 11 reachable and 24 indeterminate, each with a call chain, under a stated and tested zero-false-negative guarantee.
-
-State it in these terms — business units, not technical ones — in your CV
-bullet and in the first thirty seconds of describing the project.
-
-## Interview questions this project answers
-
-- **How do you prioritise 340 CVEs?**
-- **What breaks static call-graph analysis in Python?**
-- **Why is a false negative worse than a false positive here?**
-
-## What this deliberately is *not*
-
-- Not a scanner. It consumes advisories and your source; something else finds the dependencies.
-- Not a replacement for patching - it is a sequencing tool.
-
-
-## Run it now
+Requires Python 3.11 or newer. Nothing to install.
 
 ```bash
-python -m unittest discover -s tests -v   # the suite
-python -m src.demo                        # the 60-second artefact
-```
-
-Requires Python 3.11+. The runnable core uses **only the standard
-library** (including `sqlite3`), so there is nothing to install.
-
-## Getting started
-
-```bash
-git clone <your-fork-url> reachable
+git clone https://github.com/SlateGitOrg/reachable.git
 cd reachable
-pip install -e .
-reachable scan --entry src/main.py --lockfile poetry.lock
-reachable scan --format sarif > results.sarif
-pytest test/ground_truth        # zero false negatives
+python -m src.demo                       # run the demo
+python -m unittest discover -s tests -v  # run the tests
 ```
 
-Docker is supported but optional — every path above works on a plain
-Windows/macOS/Linux laptop without a cloud account.
+## Usage
 
-## Definition of done
+`python -m src.demo` analyses the fixture application twice: as written, and again with a single `getattr()` added to a handler. Trimmed output:
 
-- [ ] The differentiator above is implemented, and a test proves it
-- [ ] The measurable outcome is produced by a command anyone can run
-- [ ] `README` explains the one decision a generic version gets wrong
-- [ ] CI runs the full suite on every push and is green on `main`
-- [ ] A recruiter can see the headline artefact in under 60 seconds
+```text
+  Application as written
+       advisory        package      severity   verdict
+  !! OSV-2026-0001   imagelib     critical   reachable
+       app.main.main -> app.handlers.handle_upload -> imagelib.decode_png
+     OSV-2026-0002   imagelib     high       not-reachable
+     OSV-2026-0003   yamllib      critical   not-reachable
+  ...
+    reachable 2   indeterminate 1   not reachable 5
+    triage load: 3/8   gate: FAIL
 
-## Licence
+  The SAME application, with one getattr() added
+  ? OSV-2026-0002   imagelib     high       indeterminate
+  ? OSV-2026-0003   yamllib      critical   indeterminate
+  ...
+    reachable 2   indeterminate 6   not reachable 0
+    triage load: 8/8   gate: FAIL
+```
+
+The same API from Python:
+
+```python
+from src.callgraph import analyse_sources
+from src.verdict import Advisory, assess, gate, to_sarif
+
+graph = analyse_sources({"app.main": "import lib\n\ndef main():\n    lib.parse()\n",
+                         "lib": "def parse():\n    pass\n"})
+adv = [Advisory("OSV-X", "lib", "lib.parse", "demo advisory", "high")]
+verdicts = assess(graph, ["app.main.main"], adv)
+print(verdicts[0].reachability.value, verdicts[0].path)   # reachable ('app.main.main', 'lib.parse')
+print(gate(verdicts).passed)                              # False
+sarif = to_sarif(verdicts)
+```
+
+## How it works
+
+- **Import resolution.** `import a.b` binds only the top-level name `a`; the rest of the path is resolved at the call site. Binding `a` to `a.b` would corrupt every other `a.*` call in the module. `import a.b as x` binds `x` to `a.b`.
+- **Two kinds of "cannot resolve".** Unbounded dispatch (`getattr`, `eval`, dynamic import, and so on) could land anywhere, so it taints everything reached through that frame. A method call on a value the analyser cannot type (for example `hashlib.sha256(x).hexdigest()`) is bounded, and is counted and reported without tainting. Treating those as unbounded would turn nearly every verdict into `indeterminate`.
+- **Decorators are calls.** A decorator that resolves to a name becomes a call edge; one that does not is recorded as a dynamic site.
+- **Verdict order.** No symbol means `indeterminate`; symbol reached means `reachable` with its path; not reached but the reachable set contains a dynamic site means `indeterminate`; otherwise `not-reachable`.
+- **Gate.** `fail_on="reachable"` fails only on reachable findings; `"actionable"` also fails on indeterminate ones.
+
+## Testing
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+18 tests cover: every verdict on the fixture matching its hand-verified answer, the zero-false-negative contract, a single `getattr` degrading every safe verdict to `indeterminate`, symbol-less advisories, call-graph construction (imports, transitive calls, decorators, dynamic sites), the gate, and SARIF output. The ground truth is a fixture of 8 advisories over a small application, so it demonstrates the behaviour rather than measuring accuracy on real-world code.
+
+## Project layout
+
+```text
+src/
+  callgraph.py   AST call-graph construction, dynamic-site detection
+  verdict.py     reachability walk, three-state verdicts, gate, SARIF
+  corpus.py      fixture application, advisories, hand-verified expectations
+  demo.py        runnable demo (python -m src.demo)
+tests/
+  test_ground_truth.py
+docs/
+  ARCHITECTURE.md
+```
+
+## Limitations
+
+- Python source only, analysed statically; there is no type inference, so method calls on untyped receivers are counted but not followed.
+- Advisories are provided as in-memory objects. There is no OSV client, lockfile parser or command-line scanner yet.
+- Third-party packages must be supplied as source modules alongside the application.
+- Not a scanner and not a substitute for patching: it consumes advisories and your source, and it helps sequence the work.
+
+## License
 
 MIT — see [LICENSE](LICENSE).

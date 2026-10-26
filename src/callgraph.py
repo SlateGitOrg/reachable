@@ -1,7 +1,5 @@
 """Call-graph construction that is honest about what it cannot resolve.
 
-THE DIFFERENTIATOR LIVES HERE.
-
 A scanner reports 340 CVEs. Most sit in code paths the application never
 executes, so engineers spend weeks upgrading libraries to fix vulnerabilities
 that were never exploitable - and the three that genuinely are get exactly the

@@ -1,8 +1,8 @@
 """A fixture application with hand-verified reachability ground truth.
 
-The ground truth is the whole asset. Without it, "we cut 340 findings to 11"
-is a number with no error bars, and the one thing you must never do - hide a
-reachable vulnerability - is unmeasurable.
+The ground truth is the whole asset. Without it, "we cut the findings list"
+is a number with no error bars, and the one thing the tool must never do - hide
+a reachable vulnerability - is unmeasurable.
 """
 
 from __future__ import annotations
